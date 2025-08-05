@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { CourseOption, PaymentMethod, FormData, HowFoundOption, CardPaymentPlan } from './types';
 import { COURSE_OPTIONS, PAYMENT_METHODS, HOW_FOUND_OPTIONS, CARD_PAYMENT_PLAN_OPTIONS } from './constants';
@@ -9,7 +10,7 @@ import Modal from './components/Modal';
 import TermsAndConditions from './components/TermsAndConditions';
 import DigitalSignatureInput from './components/SignaturePad';
 import EmailVerificationStep from './components/EmailVerificationStep';
-import { generateWelcomeMessage, formatDataForSheet } from './services/geminiService';
+import { generateWelcomeMessage } from './services/geminiService';
 
 // --- Validation and Masking Functions ---
 const maskCPF = (value: string) => {
@@ -130,12 +131,60 @@ const paymentOptionsWithIcons = PAYMENT_METHODS.map(option => ({...option, icon:
 
 const SuccessDisplay: React.FC<{
   message: string;
-  name: string;
+  formData: FormData;
   onReset: () => void;
-  csvData: string;
-}> = ({ message, name, onReset, csvData }) => {
+}> = ({ message, formData, onReset }) => {
+    const { name, email, phone, cpf, rg, birthDate, address, instagram, course, paymentMethod, cardPaymentPlan, howFound, howFoundOther, isMinor, parentName, parentCpf, parentRg } = formData;
+    
+    const courseLabel = COURSE_OPTIONS.find(c => c.value === course)?.label || course;
+    let paymentLabel = PAYMENT_METHODS.find(p => p.value === paymentMethod)?.label || paymentMethod;
+    if (paymentMethod === PaymentMethod.CARD && cardPaymentPlan) {
+        const planLabel = CARD_PAYMENT_PLAN_OPTIONS.find(p => p.value === cardPaymentPlan)?.label || cardPaymentPlan;
+        paymentLabel += ` (${planLabel})`;
+    }
+    
+    let howFoundLabel = HOW_FOUND_OPTIONS.find(h => h.value === howFound)?.label || howFound;
+    if (howFound === HowFoundOption.OTHER && howFoundOther) {
+        howFoundLabel += `: ${howFoundOther}`;
+    }
+
+    const studentInfo = [
+        `*INFORMAÇÕES DO ALUNO*`,
+        `*Nome:* ${name}`,
+        `*Email:* ${email}`,
+        `*Telefone:* ${phone}`,
+        `*CPF:* ${cpf}`,
+        `*RG:* ${rg}`,
+        `*Data de Nascimento:* ${birthDate}`,
+        `*Endereço:* ${address}`,
+        `*Instagram:* ${instagram || 'N/A'}`,
+    ].join('\n');
+
+    const courseInfo = [
+        `\n*INFORMAÇÕES DO CURSO*`,
+        `*Curso Escolhido:* ${courseLabel}`,
+        `*Forma de Pagamento:* ${paymentLabel}`,
+        `*Como nos encontrou:* ${howFoundLabel}`,
+    ].join('\n');
+    
+    let responsibleInfo = '';
+    if (isMinor) {
+        responsibleInfo = [
+            `\n*DADOS DO RESPONSÁVEL*`,
+            `*Nome:* ${parentName}`,
+            `*CPF:* ${parentCpf}`,
+            `*RG:* ${parentRg}`,
+        ].join('\n');
+    }
+
+    const confirmationInfo = [
+        `\n*CONFIRMAÇÕES*`,
+        `*Termos Aceitos:* Sim`,
+        `*Assinatura Digital:* Confirmado`
+    ].join('\n');
+
     const phoneNumber = '5542999722042';
-    const whatsappMessage = `Olá, Luxury Studio!\n\nSegue uma nova inscrição para o curso da LuxAcademy:\n\n*Nome:* ${name}\n\n*Dados (CSV):*\n${csvData}`;
+    const whatsappMessage = `Olá, Luxury Studio!\n\nSegue uma nova inscrição para o curso da LuxAcademy:\n\n${studentInfo}${courseInfo}${responsibleInfo}${confirmationInfo}`;
     const whatsappHref = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(whatsappMessage)}`;
 
     return (
@@ -190,7 +239,6 @@ const App: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
-  const [csvData, setCsvData] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasScrolledTerms, setHasScrolledTerms] = useState(false);
   const [termsWarning, setTermsWarning] = useState<string | null>(null);
@@ -424,12 +472,8 @@ const App: React.FC = () => {
     setIsLoading(true);
     setErrors({});
     try {
-      const [message, formattedData] = await Promise.all([
-        generateWelcomeMessage(formData.name, formData.course as CourseOption),
-        formatDataForSheet(formData)
-      ]);
+      const message = await generateWelcomeMessage(formData.name, formData.course as CourseOption);
       setWelcomeMessage(message);
-      setCsvData(formattedData);
       setSubmissionSuccess(true);
     } catch (err) {
       setErrors({ _submit: 'Houve um erro ao processar sua inscrição. Tente novamente.' });
@@ -444,7 +488,6 @@ const App: React.FC = () => {
     setCurrentStepIndex(0);
     setSubmissionSuccess(false);
     setWelcomeMessage('');
-    setCsvData('');
     setErrors({});
     setHasScrolledTerms(false);
     setIsEmailVerified(false);
@@ -488,7 +531,7 @@ const App: React.FC = () => {
   return (
     <main className="min-h-screen bg-rose-50/50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
         {submissionSuccess ? (
-            <SuccessDisplay message={welcomeMessage} name={formData.name} onReset={resetForm} csvData={csvData} />
+            <SuccessDisplay message={welcomeMessage} formData={formData} onReset={resetForm} />
         ) : (
             <div className="w-full max-w-2xl mx-auto bg-white p-8 md:p-12 rounded-2xl shadow-2xl">
                 <div className="text-center mb-8">
