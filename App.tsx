@@ -210,14 +210,14 @@ const SuccessDisplay: React.FC<{
             
             <div className="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 p-4 rounded-md w-full text-left mb-8 space-y-2">
                 <h4 className="font-bold text-gray-900">Próximos Passos para Finalizar:</h4>
-                <p><strong>1. Baixe o Contrato:</strong> Clique no botão abaixo para salvar o PDF da sua inscrição.</p>
-                <p><strong>2. Envie no WhatsApp:</strong> Abra a conversa no WhatsApp e <strong>anexe o arquivo PDF que você baixou</strong> antes de enviar a mensagem para confirmar sua vaga.</p>
+                <p><strong>1. Abra e Salve o Contrato:</strong> Clique no botão abaixo para abrir o contrato em uma nova guia. <strong>Salve o PDF</strong> em seu dispositivo a partir dela.</p>
+                <p><strong>2. Envie no WhatsApp:</strong> Volte para esta guia, clique no botão do WhatsApp e anexe o arquivo PDF que você acabou de salvar.</p>
             </div>
             
             <div className="w-full max-w-sm mb-4 flex flex-col gap-4">
                <Button onClick={onGeneratePdf} isLoading={isGeneratingPdf} type="button">
                     <PdfIcon />
-                    {isGeneratingPdf ? 'Gerando PDF...' : 'Baixar Contrato em PDF'}
+                    {isGeneratingPdf ? 'Gerando PDF...' : 'Abrir Contrato (PDF)'}
                 </Button>
               <a 
                 href={whatsappHref} 
@@ -541,8 +541,7 @@ const App: React.FC = () => {
               pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
               heightLeft -= pdfHeight;
           }
-          const safeName = formData.name.replace(/[^a-zA-Z0-9]/g, '_');
-          pdf.save(`Contrato-LuxAcademy-${safeName}.pdf`);
+          pdf.output('dataurlnewwindow');
       } catch (error) {
           console.error("Error generating PDF:", error);
           setErrors(prev => ({ ...prev, _submit: 'Falha ao gerar o PDF. Por favor, tente novamente.' }));
