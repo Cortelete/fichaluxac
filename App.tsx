@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import jsPDF from 'https://esm.sh/jspdf@2.5.1';
-import html2canvas from 'https://esm.sh/html2canvas@1.4.1';
+import jsPDF from 'https://esm.sh/jspdf@2.5.1?bundle';
+import html2canvas from 'https://esm.sh/html2canvas@1.4.1?bundle';
 
 import { CourseOption, PaymentMethod, FormData, HowFoundOption, CardPaymentPlan } from './types';
 import { COURSE_OPTIONS, PAYMENT_METHODS, HOW_FOUND_OPTIONS, CARD_PAYMENT_PLAN_OPTIONS } from './constants';
@@ -511,7 +511,7 @@ const App: React.FC = () => {
       setIsGeneratingPdf(true);
       try {
           const canvas = await html2canvas(contractElement, {
-              scale: 2, // Higher scale for better quality
+              scale: 2,
               logging: false,
               useCORS: true,
           });
@@ -536,12 +536,16 @@ const App: React.FC = () => {
           heightLeft -= pdfHeight;
 
           while (heightLeft > 0) {
-              position = heightLeft - imgHeight;
+              position -= pdfHeight;
               pdf.addPage();
               pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
               heightLeft -= pdfHeight;
           }
-          pdf.output('dataurlnewwindow');
+          
+          const pdfBlob = pdf.getBlob();
+          const blobUrl = URL.createObjectURL(pdfBlob);
+          window.open(blobUrl, '_blank');
+          
       } catch (error) {
           console.error("Error generating PDF:", error);
           setErrors(prev => ({ ...prev, _submit: 'Falha ao gerar o PDF. Por favor, tente novamente.' }));
