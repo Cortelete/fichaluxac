@@ -9,6 +9,7 @@ import PaymentOptions from './components/PaymentOptions';
 import Modal from './components/Modal';
 import TermsAndConditions from './components/TermsAndConditions';
 import DigitalSignatureInput from './components/SignaturePad';
+import EmailVerificationStep from './components/EmailVerificationStep';
 import { generateWelcomeMessage, formatDataForSheet } from './services/geminiService';
 
 const CONFIRMATION_PHRASE = "Eu sou responsável e estou ciente";
@@ -126,6 +127,7 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasScrolledTerms, setHasScrolledTerms] = useState(false);
   const [termsWarning, setTermsWarning] = useState<string | null>(null);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
 
   useEffect(() => {
     if (termsWarning) {
@@ -185,7 +187,7 @@ const App: React.FC = () => {
 
   const steps = useMemo(() => [
     { id: 'name', label: "Primeiramente, qual seu nome completo?", component: InputField, props: { type: 'text', placeholder: "Seu nome completo", icon: <UserIcon />, required: true } },
-    { id: 'email', label: "Ótimo! Agora, qual o seu melhor e-mail?", component: InputField, props: { type: 'email', placeholder: "seu.email@exemplo.com", icon: <EmailIcon />, required: true } },
+    { id: 'email', label: "Ótimo! Agora, qual o seu melhor e-mail?", component: EmailVerificationStep, props: { placeholder: "seu.email@exemplo.com", icon: <EmailIcon />, required: true } },
     { id: 'phone', label: "Qual seu número de Telefone/WhatsApp?", component: InputField, props: { type: 'tel', placeholder: "(00) 00000-0000", icon: <PhoneIcon />, required: true } },
     { id: 'cpf', label: "Para o contrato, precisamos do seu CPF.", component: InputField, props: { type: 'text', placeholder: "000.000.000-00", icon: <ShieldIcon />, required: true } },
     { id: 'rg', label: "E também do seu RG.", component: InputField, props: { type: 'text', placeholder: "00.000.000-0", icon: <IdIcon />, required: true } },
@@ -256,6 +258,7 @@ const App: React.FC = () => {
   
   const isCurrentStepValid = () => {
       const value = formData[currentStep.id as keyof FormData];
+      if (currentStep.id === 'email') return isEmailVerified;
       if (currentStep.id === 'termsAccepted') return formData.termsAccepted;
       if (currentStep.id === 'signatureConfirmation') return formData.signatureConfirmation.trim() === CONFIRMATION_PHRASE;
       if (currentStep.props?.required) return value !== '' && value !== null && value !== undefined;
@@ -308,21 +311,38 @@ const App: React.FC = () => {
     setCsvData('');
     setError(null);
     setHasScrolledTerms(false);
+    setIsEmailVerified(false);
   };
 
   const renderStepComponent = () => {
     const StepComponent = currentStep.component as React.ElementType;
+
+    if (currentStep.id === 'email') {
+        return (
+            <EmailVerificationStep
+                id={currentStep.id}
+                value={formData.email}
+                onChange={handleInputChange}
+                onVerified={setIsEmailVerified}
+                isVerified={isEmailVerified}
+                placeholder={currentStep.props.placeholder}
+                icon={currentStep.props.icon}
+            />
+        );
+    }
+    
+    if (StepComponent === PaymentOptions) {
+        return <PaymentOptions selectedValue={formData.paymentMethod} onChange={handlePaymentChange} options={paymentOptionsWithIcons} />;
+    }
+    
     const commonProps = {
-      onChange: StepComponent === SelectField ? handleSelectChange : (StepComponent === PaymentOptions ? handlePaymentChange : handleInputChange),
+      onChange: StepComponent === SelectField ? handleSelectChange : handleInputChange,
       value: formData[currentStep.id as keyof FormData],
       id: currentStep.id,
       name: currentStep.id,
       ...currentStep.props
     };
-     // PaymentOptions has a different signature
-    if (StepComponent === PaymentOptions) {
-        return <PaymentOptions selectedValue={formData.paymentMethod} onChange={handlePaymentChange} options={paymentOptionsWithIcons} />;
-    }
+    
     return <StepComponent {...commonProps} />;
   }
   

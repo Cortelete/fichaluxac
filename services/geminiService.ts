@@ -2,14 +2,19 @@
 import { GoogleGenAI } from "@google/genai";
 import { CourseOption, FormData, PaymentMethod, HowFoundOption } from '../types';
 
-const API_KEY = process.env.API_KEY;
+let ai: GoogleGenAI | null = null;
 
-if (!API_KEY) {
-  // This case will be handled by the environment, but it's good practice to check.
-  console.error("API_KEY is not set. Please configure the environment variable.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
+const getAiClient = (): GoogleGenAI => {
+    if (!ai) {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) {
+            console.error("API_KEY is not set. Please configure the environment variable.");
+            throw new Error("API Key not found.");
+        }
+        ai = new GoogleGenAI({ apiKey });
+    }
+    return ai;
+};
 
 export const generateWelcomeMessage = async (name: string, course: CourseOption): Promise<string> => {
   const courseDescriptions: Record<CourseOption, string> = {
@@ -33,7 +38,8 @@ export const generateWelcomeMessage = async (name: string, course: CourseOption)
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const client = getAiClient();
+    const response = await client.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
     });
@@ -94,7 +100,8 @@ export const formatDataForSheet = async (data: FormData): Promise<string> => {
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const client = getAiClient();
+    const response = await client.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
     });
@@ -105,4 +112,30 @@ export const formatDataForSheet = async (data: FormData): Promise<string> => {
     const orderedData = headers.map(header => sheetData[header] || '');
     return orderedData.map(value => `"${value}"`).join(',');
   }
+};
+
+export const generateVerificationCode = async (): Promise<string> => {
+    const prompt = `
+        Gere um código de verificação numérico de 6 dígitos.
+        Responda APENAS com os 6 dígitos. Não inclua nenhum outro texto, formatação ou explicação.
+        Exemplo de resposta: 123456
+    `;
+
+    try {
+        const client = getAiClient();
+        const response = await client.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+        });
+        const code = response.text.trim().replace(/\D/g, '');
+        if (code.length === 6) {
+            return code;
+        }
+        // Fallback if Gemini returns something weird
+        throw new Error("Invalid code format from API");
+    } catch (error) {
+        console.error("Error generating verification code, using fallback:", error);
+        // Fallback to a client-side generated code
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    }
 };
