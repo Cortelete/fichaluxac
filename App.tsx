@@ -9,7 +9,6 @@ import PaymentOptions from './components/PaymentOptions';
 import Modal from './components/Modal';
 import TermsAndConditions from './components/TermsAndConditions';
 import DigitalSignatureInput from './components/SignaturePad';
-import EmailVerificationStep from './components/EmailVerificationStep';
 import { generateWelcomeMessage } from './services/geminiService';
 
 // --- Validation and Masking Functions ---
@@ -77,6 +76,11 @@ const validateBirthDate = (dateStr: string) => {
     return false; // Date is in the future
   }
   return true;
+};
+
+const validateEmail = (email: string) => {
+    // Simple regex for email format validation: something@something.something
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 };
 
 
@@ -242,7 +246,6 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasScrolledTerms, setHasScrolledTerms] = useState(false);
   const [termsWarning, setTermsWarning] = useState<string | null>(null);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
 
   useEffect(() => {
     if (termsWarning) {
@@ -311,7 +314,7 @@ const App: React.FC = () => {
 
   const steps = useMemo(() => [
     { id: 'name', label: "Primeiramente, qual seu nome completo?", component: InputField, props: { type: 'text', placeholder: "Seu nome completo", icon: <UserIcon />, required: true } },
-    { id: 'email', label: "Ótimo! Agora, qual o seu melhor e-mail?", component: EmailVerificationStep, props: { placeholder: "seu.email@exemplo.com", icon: <EmailIcon />, required: true } },
+    { id: 'email', label: "Ótimo! Agora, qual o seu melhor e-mail?", component: InputField, props: { type: 'email', placeholder: "seu.email@exemplo.com", icon: <EmailIcon />, required: true } },
     { id: 'phone', label: "Qual seu número de Telefone/WhatsApp?", component: InputField, props: { type: 'tel', placeholder: "(00) 00000-0000", icon: <PhoneIcon />, required: true } },
     { id: 'cpf', label: "Para o contrato, precisamos do seu CPF.", component: InputField, props: { type: 'text', placeholder: "000.000.000-00", icon: <ShieldIcon />, required: true } },
     { id: 'rg', label: "E também do seu RG.", component: InputField, props: { type: 'text', placeholder: "00.000.000-0", icon: <IdIcon />, required: true } },
@@ -374,7 +377,7 @@ const App: React.FC = () => {
             )}
         </div>
     )},
-  ], [formData, handleInputChange, hasScrolledTerms, handleTermsAreaClick, isEmailVerified]);
+  ], [formData, handleInputChange, hasScrolledTerms, handleTermsAreaClick]);
 
   const visibleSteps = useMemo(() => steps.filter(step => !step.condition || step.condition(formData)), [steps, formData]);
   
@@ -422,9 +425,9 @@ const App: React.FC = () => {
           }
           break;
         case 'email':
-          if (!isEmailVerified) {
+          if (!validateEmail(value as string)) {
             isValid = false;
-            errorMessage = 'Por favor, conclua a verificação do e-mail.';
+            errorMessage = 'Por favor, insira um formato de e-mail válido (ex: email@dominio.com).';
           }
           break;
         case 'termsAccepted':
@@ -490,25 +493,10 @@ const App: React.FC = () => {
     setWelcomeMessage('');
     setErrors({});
     setHasScrolledTerms(false);
-    setIsEmailVerified(false);
   };
 
   const renderStepComponent = () => {
     const StepComponent = currentStep.component as React.ElementType;
-
-    if (currentStep.id === 'email') {
-        return (
-            <EmailVerificationStep
-                id={currentStep.id}
-                value={formData.email}
-                onChange={handleInputChange}
-                onVerified={setIsEmailVerified}
-                isVerified={isEmailVerified}
-                placeholder={currentStep.props.placeholder}
-                icon={currentStep.props.icon}
-            />
-        );
-    }
     
     if (StepComponent === PaymentOptions) {
         return <PaymentOptions selectedValue={formData.paymentMethod} onChange={handlePaymentChange} options={paymentOptionsWithIcons} />;

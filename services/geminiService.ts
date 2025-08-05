@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { CourseOption } from '../types';
 
@@ -51,27 +50,31 @@ export const generateWelcomeMessage = async (name: string, course: CourseOption)
 };
 
 export const generateVerificationCode = async (): Promise<string> => {
-    const prompt = `
-        Gere um código de verificação numérico de 6 dígitos.
-        Responda APENAS com os 6 dígitos. Não inclua nenhum outro texto, formatação ou explicação.
-        Exemplo de resposta: 123456
-    `;
+  const prompt = `
+    Gere um código de verificação numérico aleatório de 6 dígitos.
+    Responda APENAS com o código de 6 dígitos, sem nenhum texto ou explicação adicional.
+    Exemplo de resposta: 123456
+  `;
 
-    try {
-        const client = getAiClient();
-        const response = await client.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
-        const code = response.text.trim().replace(/\D/g, '');
-        if (code.length === 6) {
-            return code;
-        }
-        // Fallback if Gemini returns something weird
-        throw new Error("Invalid code format from API");
-    } catch (error) {
-        console.error("Error generating verification code, using fallback:", error);
-        // Fallback to a client-side generated code
-        return Math.floor(100000 + Math.random() * 900000).toString();
+  try {
+    const client = getAiClient();
+    const response = await client.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+    });
+    
+    const code = response.text.trim().replace(/\D/g, '');
+    
+    if (code && code.length === 6) {
+        return code;
     }
+    
+    console.warn("Gemini did not return a valid 6-digit code, generating a fallback. Response was:", response.text);
+    // Fallback if the model response is not as expected.
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  } catch (error) {
+    console.error("Error generating verification code with Gemini:", error);
+    // Fallback to local generation if API fails
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
 };
