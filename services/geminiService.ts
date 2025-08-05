@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI } from "https://esm.sh/@google/genai@1.12.0";
 import { CourseOption } from '../types';
 
 let ai: GoogleGenAI | null = null;
