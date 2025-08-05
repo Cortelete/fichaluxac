@@ -1,0 +1,6 @@
+{
+  "name": "LuxAcademy - Inscrição para Curso",
+  "description": "Um formulário de inscrição elegante para os cursos de lash design da LuxAcademy, oferecido pelo Luxury Studio de Beleza Joyci Almeida. O formulário coleta dados dos alunos e utiliza a API Gemini para gerar uma mensagem de boas-vindas personalizada.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
