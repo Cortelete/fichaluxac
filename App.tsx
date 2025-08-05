@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { CourseOption, PaymentMethod, FormData, HowFoundOption, CardPaymentPlan } from './types';
 import { COURSE_OPTIONS, PAYMENT_METHODS, HOW_FOUND_OPTIONS, CARD_PAYMENT_PLAN_OPTIONS } from './constants';
@@ -11,6 +10,74 @@ import TermsAndConditions from './components/TermsAndConditions';
 import DigitalSignatureInput from './components/SignaturePad';
 import EmailVerificationStep from './components/EmailVerificationStep';
 import { generateWelcomeMessage, formatDataForSheet } from './services/geminiService';
+
+// --- Validation and Masking Functions ---
+const maskCPF = (value: string) => {
+  return value
+    .replace(/\D/g, '')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})/, '$1-$2')
+    .slice(0, 14);
+};
+
+const validateCPF = (cpf: string) => {
+  const cpfClean = (cpf || '').replace(/[^\d]/g, '');
+  if (cpfClean.length !== 11 || /^(\d)\1+$/.test(cpfClean)) return false;
+  let sum = 0;
+  let remainder;
+  for (let i = 1; i <= 9; i++) sum += parseInt(cpfClean.substring(i - 1, i)) * (11 - i);
+  remainder = (sum * 10) % 11;
+  if ((remainder === 10) || (remainder === 11)) remainder = 0;
+  if (remainder !== parseInt(cpfClean.substring(9, 10))) return false;
+  sum = 0;
+  for (let i = 1; i <= 10; i++) sum += parseInt(cpfClean.substring(i - 1, i)) * (12 - i);
+  remainder = (sum * 10) % 11;
+  if ((remainder === 10) || (remainder === 11)) remainder = 0;
+  if (remainder !== parseInt(cpfClean.substring(10, 11))) return false;
+  return true;
+};
+
+const maskPhone = (value: string) => {
+  return value
+    .replace(/\D/g, '')
+    .replace(/^(\d{2})(\d)/, '($1) $2')
+    .replace(/(\d{5})(\d{4}).*/, '$1-$2');
+};
+
+const validatePhone = (phone: string) => {
+  const phoneClean = (phone || '').replace(/\D/g, '');
+  return phoneClean.length >= 10 && phoneClean.length <= 11;
+};
+
+// RG formats vary greatly, so we don't apply a strict mask, just length validation.
+const validateRG = (rg: string) => {
+  const rgClean = (rg || '').replace(/[^\d\w]/g, '');
+  return rgClean.length >= 7;
+};
+
+const maskBirthDate = (value: string) => {
+  let maskedValue = value.replace(/\D/g, '');
+  if (maskedValue.length > 2) maskedValue = `${maskedValue.slice(0, 2)}/${maskedValue.slice(2)}`;
+  if (maskedValue.length > 5) maskedValue = `${maskedValue.slice(0, 5)}/${maskedValue.slice(5, 9)}`;
+  return maskedValue.slice(0, 10);
+};
+
+const validateBirthDate = (dateStr: string) => {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) return false;
+
+  const [day, month, year] = dateStr.split('/').map(Number);
+  const date = new Date(year, month - 1, day);
+
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return false; // Invalid date (e.g., Feb 30)
+  }
+  if (date > new Date()) {
+    return false; // Date is in the future
+  }
+  return true;
+};
+
 
 const CONFIRMATION_PHRASE = "Eu sou responsável e estou ciente";
 
@@ -120,7 +187,7 @@ const App: React.FC = () => {
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [csvData, setCsvData] = useState('');
@@ -151,27 +218,36 @@ const App: React.FC = () => {
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
-    setError(null);
-    let finalValue = type === 'checkbox' ? checked : value;
+    setErrors(prev => ({ ...prev, [name]: '', _submit: '' }));
+
+    let finalValue: string | boolean = type === 'checkbox' ? checked : value;
     
-    if (name === 'birthDate') {
-        let maskedValue = value.replace(/\D/g, '');
-        if (maskedValue.length > 2) maskedValue = `${maskedValue.slice(0, 2)}/${maskedValue.slice(2)}`;
-        if (maskedValue.length > 5) maskedValue = `${maskedValue.slice(0, 5)}/${maskedValue.slice(5, 9)}`;
-        finalValue = maskedValue.slice(0, 10);
+    if (type !== 'checkbox') {
+      switch (name) {
+        case 'cpf':
+        case 'parentCpf':
+          finalValue = maskCPF(value);
+          break;
+        case 'phone':
+          finalValue = maskPhone(value);
+          break;
+        case 'birthDate':
+          finalValue = maskBirthDate(value);
+          break;
+      }
     }
     
-    setFormData(prev => ({ ...prev, [name]: finalValue }));
+    setFormData(prev => ({ ...prev, [name]: finalValue as never }));
   }, []);
 
   const handleSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setError(null);
+    setErrors(prev => ({ ...prev, [name]: '', _submit: '' }));
     setFormData(prev => ({ ...prev, [name]: value }));
   }, []);
   
   const handlePaymentChange = useCallback((value: string) => {
-    setError(null);
+    setErrors(prev => ({ ...prev, paymentMethod: '', _submit: '' }));
     setFormData(prev => ({ 
       ...prev, 
       paymentMethod: value as PaymentMethod,
@@ -250,36 +326,95 @@ const App: React.FC = () => {
             )}
         </div>
     )},
-  ], [formData.isMinor, formData.howFound, formData.paymentMethod, formData.termsAccepted, formData.signatureConfirmation, handleInputChange, hasScrolledTerms, handleTermsAreaClick]);
+  ], [formData, handleInputChange, hasScrolledTerms, handleTermsAreaClick, isEmailVerified]);
 
   const visibleSteps = useMemo(() => steps.filter(step => !step.condition || step.condition(formData)), [steps, formData]);
   
   const currentStep = visibleSteps[currentStepIndex];
-  
-  const isCurrentStepValid = () => {
-      const value = formData[currentStep.id as keyof FormData];
-      if (currentStep.id === 'email') return isEmailVerified;
-      if (currentStep.id === 'termsAccepted') return formData.termsAccepted;
-      if (currentStep.id === 'signatureConfirmation') return formData.signatureConfirmation.trim() === CONFIRMATION_PHRASE;
-      if (currentStep.props?.required) return value !== '' && value !== null && value !== undefined;
-      return true;
-  };
 
+  const validateCurrentStep = (): boolean => {
+    const stepId = currentStep.id as keyof FormData;
+    const value = formData[stepId];
+    let isValid = true;
+    let errorMessage = '';
+
+    if (currentStep.props?.required) {
+      if (!value || (typeof value === 'string' && value.trim() === '')) {
+        isValid = false;
+        errorMessage = 'Este campo é obrigatório.';
+      }
+    }
+
+    if (isValid && value) {
+      switch (stepId) {
+        case 'cpf':
+        case 'parentCpf':
+          if (!validateCPF(value as string)) {
+            isValid = false;
+            errorMessage = 'CPF inválido. Verifique os dígitos.';
+          }
+          break;
+        case 'phone':
+          if (!validatePhone(value as string)) {
+            isValid = false;
+            errorMessage = 'Telefone inválido. Deve ter 10 ou 11 dígitos.';
+          }
+          break;
+        case 'rg':
+        case 'parentRg':
+          if (!validateRG(value as string)) {
+            isValid = false;
+            errorMessage = 'RG inválido. Deve ter pelo menos 7 caracteres.';
+          }
+          break;
+        case 'birthDate':
+          if (!validateBirthDate(value as string)) {
+            isValid = false;
+            errorMessage = 'Data inválida. Use DD/MM/AAAA e não pode ser uma data futura.';
+          }
+          break;
+        case 'email':
+          if (!isEmailVerified) {
+            isValid = false;
+            errorMessage = 'Por favor, conclua a verificação do e-mail.';
+          }
+          break;
+        case 'termsAccepted':
+          if (!formData.termsAccepted) {
+            isValid = false;
+            errorMessage = 'Você deve aceitar os termos para continuar.';
+          }
+          break;
+        case 'signatureConfirmation':
+          if ((value as string).trim() !== CONFIRMATION_PHRASE) {
+            isValid = false;
+            errorMessage = 'A frase de confirmação não corresponde.';
+          }
+          break;
+      }
+    }
+
+    if (!isValid) {
+      setErrors({ [stepId]: errorMessage });
+      return false;
+    }
+
+    setErrors({});
+    return true;
+  };
+  
   const handleNext = () => {
-    if (isCurrentStepValid()) {
-      setError(null);
+    if (validateCurrentStep()) {
       if (currentStepIndex < visibleSteps.length - 1) {
         setCurrentStepIndex(prev => prev + 1);
       } else {
         handleSubmit();
       }
-    } else {
-      setError("Por favor, preencha o campo corretamente.");
     }
   };
   
   const handleBack = () => {
-    setError(null);
+    setErrors({});
     if (currentStepIndex > 0) {
       setCurrentStepIndex(prev => prev - 1);
     }
@@ -287,6 +422,7 @@ const App: React.FC = () => {
 
   const handleSubmit = async () => {
     setIsLoading(true);
+    setErrors({});
     try {
       const [message, formattedData] = await Promise.all([
         generateWelcomeMessage(formData.name, formData.course as CourseOption),
@@ -296,7 +432,7 @@ const App: React.FC = () => {
       setCsvData(formattedData);
       setSubmissionSuccess(true);
     } catch (err) {
-      setError('Houve um erro ao processar sua inscrição. Tente novamente.');
+      setErrors({ _submit: 'Houve um erro ao processar sua inscrição. Tente novamente.' });
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -309,7 +445,7 @@ const App: React.FC = () => {
     setSubmissionSuccess(false);
     setWelcomeMessage('');
     setCsvData('');
-    setError(null);
+    setErrors({});
     setHasScrolledTerms(false);
     setIsEmailVerified(false);
   };
@@ -347,6 +483,7 @@ const App: React.FC = () => {
   }
   
   const progressPercentage = ((currentStepIndex + 1) / visibleSteps.length) * 100;
+  const currentError = errors[currentStep.id] || errors._submit;
 
   return (
     <main className="min-h-screen bg-rose-50/50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
@@ -377,7 +514,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
 
-                {error && <p className="text-red-600 text-sm text-center mt-4 animate-shake">{error}</p>}
+                {currentError && <p className="text-red-600 text-sm text-center mt-4 animate-shake">{currentError}</p>}
                 
                 <div className="mt-10 flex gap-4 items-center">
                     {currentStepIndex > 0 && (
@@ -390,7 +527,7 @@ const App: React.FC = () => {
                         </button>
                     )}
                     <div className="flex-grow">
-                         <Button onClick={handleNext} isLoading={isLoading} disabled={!isCurrentStepValid()}>
+                         <Button onClick={handleNext} isLoading={isLoading}>
                             {isLoading ? 'Enviando...' : (currentStepIndex === visibleSteps.length - 1 ? 'Finalizar Inscrição' : 'Próximo')}
                         </Button>
                     </div>
