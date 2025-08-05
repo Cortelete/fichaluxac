@@ -1,5 +1,7 @@
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+
 import { CourseOption, PaymentMethod, FormData, HowFoundOption, CardPaymentPlan } from './types';
 import { COURSE_OPTIONS, PAYMENT_METHODS, HOW_FOUND_OPTIONS, CARD_PAYMENT_PLAN_OPTIONS } from './constants';
 import InputField from './components/InputField';
@@ -9,6 +11,7 @@ import PaymentOptions from './components/PaymentOptions';
 import Modal from './components/Modal';
 import TermsAndConditions from './components/TermsAndConditions';
 import DigitalSignatureInput from './components/SignaturePad';
+import ContractDocument from './components/ContractDocument';
 import { generateWelcomeMessage } from './services/geminiService';
 
 // --- Validation and Masking Functions ---
@@ -122,6 +125,7 @@ const CashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-
 const CardIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>;
 const CryptoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="M15 9.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"></path><path d="M15 14.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z"></path></svg>;
 const WhatsAppIcon = () => <svg className="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.886-.001 2.267.651 4.383 1.898 6.206l-.277.424-1.125 4.105 4.095-1.082.387-.21zm-1.124-7.404c-.076-.123-.247-.198-.448-.204-.202-.005-.448-.005-.623-.005-.167 0-.448.058-.687.306-.245.248-.863.858-.863 2.064 0 1.206.888 2.394 1.012 2.569.124.176 1.758 2.83 4.253 3.75.527.181.935.289 1.266.364.475.113.871.09.951-.044.225-.213.682-.87.781-1.025s.099-.155.025-.28c-.075-.125-.278-.225-.376-.275-.099-.05-1.157-.565-1.336-.625-.179-.06-.31-.09-.448.09-.139.179-.506.624-.623.75-.117.124-.234.15-.41.09-.176-.061-1.041-.377-1.982-1.222-.733-.656-1.221-1.475-1.345-1.725-.124-.25-.062-.39.025-.519.087-.129.199-.213.298-.32.099-.104.149-.178.224-.298.075-.124.038-.224-.012-.324-.05-.1-.448-1.063-.614-1.455z"/></svg>;
+const PdfIcon = () => <svg className="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
 
 
 const paymentMethodIcons: Record<string, React.ReactNode> = {
@@ -137,7 +141,9 @@ const SuccessDisplay: React.FC<{
   message: string;
   formData: FormData;
   onReset: () => void;
-}> = ({ message, formData, onReset }) => {
+  onGeneratePdf: () => Promise<void>;
+  isGeneratingPdf: boolean;
+}> = ({ message, formData, onReset, onGeneratePdf, isGeneratingPdf }) => {
     const { name, email, phone, cpf, rg, birthDate, address, instagram, course, paymentMethod, cardPaymentPlan, howFound, howFoundOther, isMinor, parentName, parentCpf, parentRg } = formData;
     
     const courseLabel = COURSE_OPTIONS.find(c => c.value === course)?.label || course;
@@ -193,17 +199,26 @@ const SuccessDisplay: React.FC<{
 
     return (
         <div className="w-full max-w-2xl mx-auto bg-white p-8 md:p-12 rounded-2xl shadow-2xl text-center flex flex-col items-center animate-fade-in">
-            <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mb-6">
-                 <svg className="h-10 w-10 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                 <svg className="h-10 w-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
             </div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-4">Falta só um passo!</h2>
+            <h2 className="text-3xl font-bold text-gray-800 mb-4">Inscrição Recebida!</h2>
             <p className="text-lg text-gray-600 mb-2">Olá {name},</p>
             <p className="text-lg text-gray-600 mb-8 italic">"{message}"</p>
-            <p className="text-gray-500 mb-6">Envie agora mesmo para o WhatsApp da Joy e aguarde a confirmação para o pagamento.</p>
             
-            <div className="w-full max-w-sm mb-4">
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 p-4 rounded-md w-full text-left mb-8 space-y-2">
+                <h4 className="font-bold text-gray-900">Próximos Passos para Finalizar:</h4>
+                <p><strong>1. Baixe o Contrato:</strong> Clique no botão abaixo para salvar o PDF da sua inscrição.</p>
+                <p><strong>2. Envie no WhatsApp:</strong> Abra a conversa no WhatsApp e <strong>anexe o arquivo PDF que você baixou</strong> antes de enviar a mensagem para confirmar sua vaga.</p>
+            </div>
+            
+            <div className="w-full max-w-sm mb-4 flex flex-col gap-4">
+               <Button onClick={onGeneratePdf} isLoading={isGeneratingPdf} type="button">
+                    <PdfIcon />
+                    {isGeneratingPdf ? 'Gerando PDF...' : 'Baixar Contrato em PDF'}
+                </Button>
               <a 
                 href={whatsappHref} 
                 target="_blank"
@@ -246,6 +261,7 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasScrolledTerms, setHasScrolledTerms] = useState(false);
   const [termsWarning, setTermsWarning] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   useEffect(() => {
     if (termsWarning) {
@@ -486,6 +502,55 @@ const App: React.FC = () => {
     }
   };
 
+  const handleGeneratePdf = async () => {
+      const contractElement = document.getElementById('pdf-contract-container');
+      if (!contractElement) {
+          console.error('Contract element not found for PDF generation.');
+          return;
+      }
+      setIsGeneratingPdf(true);
+      try {
+          const canvas = await html2canvas(contractElement, {
+              scale: 2, // Higher scale for better quality
+              logging: false,
+              useCORS: true,
+          });
+          const imgData = canvas.toDataURL('image/png');
+          const pdf = new jsPDF({
+              orientation: 'portrait',
+              unit: 'mm',
+              format: 'a4',
+          });
+
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = pdf.internal.pageSize.getHeight();
+          const canvasWidth = canvas.width;
+          const canvasHeight = canvas.height;
+          
+          const ratio = canvasWidth / pdfWidth;
+          const imgHeight = canvasHeight / ratio;
+          let heightLeft = imgHeight;
+          let position = 0;
+
+          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+          heightLeft -= pdfHeight;
+
+          while (heightLeft > 0) {
+              position = heightLeft - imgHeight;
+              pdf.addPage();
+              pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+              heightLeft -= pdfHeight;
+          }
+          const safeName = formData.name.replace(/[^a-zA-Z0-9]/g, '_');
+          pdf.save(`Contrato-LuxAcademy-${safeName}.pdf`);
+      } catch (error) {
+          console.error("Error generating PDF:", error);
+          setErrors(prev => ({ ...prev, _submit: 'Falha ao gerar o PDF. Por favor, tente novamente.' }));
+      } finally {
+          setIsGeneratingPdf(false);
+      }
+  };
+
   const resetForm = () => {
     setFormData(initialFormData);
     setCurrentStepIndex(0);
@@ -517,58 +582,71 @@ const App: React.FC = () => {
   const currentError = errors[currentStep.id] || errors._submit;
 
   return (
-    <main className="min-h-screen bg-rose-50/50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
-        {submissionSuccess ? (
-            <SuccessDisplay message={welcomeMessage} formData={formData} onReset={resetForm} />
-        ) : (
-            <div className="w-full max-w-2xl mx-auto bg-white p-8 md:p-12 rounded-2xl shadow-2xl">
-                <div className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-gray-800">LuxAcademy</h1>
-                    <p className="text-lg text-gray-500 mt-2">Inscrição para Curso</p>
-                </div>
-                
-                <div className="mb-8">
-                    <div className="flex justify-between mb-1">
-                        <span className="text-base font-medium text-yellow-700">Passo {currentStepIndex + 1} de {visibleSteps.length}</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div className="bg-yellow-500 h-2.5 rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
-                    </div>
-                </div>
+    <>
+      {submissionSuccess && (
+        <div style={{ position: 'absolute', left: '-9999px', top: 0, zIndex: -1 }}>
+          <ContractDocument id="pdf-contract-container" formData={formData} />
+        </div>
+      )}
+      <main className="min-h-screen bg-rose-50/50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
+          {submissionSuccess ? (
+              <SuccessDisplay 
+                message={welcomeMessage} 
+                formData={formData} 
+                onReset={resetForm} 
+                onGeneratePdf={handleGeneratePdf}
+                isGeneratingPdf={isGeneratingPdf}
+              />
+          ) : (
+              <div className="w-full max-w-2xl mx-auto bg-white p-8 md:p-12 rounded-2xl shadow-2xl">
+                  <div className="text-center mb-8">
+                      <h1 className="text-4xl font-bold text-gray-800">LuxAcademy</h1>
+                      <p className="text-lg text-gray-500 mt-2">Inscrição para Curso</p>
+                  </div>
+                  
+                  <div className="mb-8">
+                      <div className="flex justify-between mb-1">
+                          <span className="text-base font-medium text-yellow-700">Passo {currentStepIndex + 1} de {visibleSteps.length}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                          <div className="bg-yellow-500 h-2.5 rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
+                      </div>
+                  </div>
 
-                <div className="text-center min-h-[180px] flex flex-col justify-center items-center animate-fade-in">
-                    <label htmlFor={currentStep.id} className="block text-xl font-semibold text-gray-800 mb-6">
-                        {currentStep.label}
-                    </label>
-                    <div className="w-full max-w-md">
-                        {renderStepComponent()}
-                    </div>
-                </div>
+                  <div className="text-center min-h-[180px] flex flex-col justify-center items-center animate-fade-in">
+                      <label htmlFor={currentStep.id} className="block text-xl font-semibold text-gray-800 mb-6">
+                          {currentStep.label}
+                      </label>
+                      <div className="w-full max-w-md">
+                          {renderStepComponent()}
+                      </div>
+                  </div>
 
-                {currentError && <p className="text-red-600 text-sm text-center mt-4 animate-shake">{currentError}</p>}
-                
-                <div className="mt-10 flex gap-4 items-center">
-                    {currentStepIndex > 0 && (
-                        <button
-                            type="button"
-                            onClick={handleBack}
-                            className="w-1/3 rounded-md border border-gray-300 bg-white py-3 px-4 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-all duration-300"
-                        >
-                            Voltar
-                        </button>
-                    )}
-                    <div className="flex-grow">
-                         <Button onClick={handleNext} isLoading={isLoading}>
-                            {isLoading ? 'Enviando...' : (currentStepIndex === visibleSteps.length - 1 ? 'Finalizar Inscrição' : 'Próximo')}
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        )}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Termos e Condições" onContentScroll={handleTermsScroll}>
-        <TermsAndConditions />
-      </Modal>
-    </main>
+                  {currentError && <p className="text-red-600 text-sm text-center mt-4 animate-shake">{currentError}</p>}
+                  
+                  <div className="mt-10 flex gap-4 items-center">
+                      {currentStepIndex > 0 && (
+                          <button
+                              type="button"
+                              onClick={handleBack}
+                              className="w-1/3 rounded-md border border-gray-300 bg-white py-3 px-4 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-all duration-300"
+                          >
+                              Voltar
+                          </button>
+                      )}
+                      <div className="flex-grow">
+                           <Button onClick={handleNext} isLoading={isLoading}>
+                              {isLoading ? 'Enviando...' : (currentStepIndex === visibleSteps.length - 1 ? 'Finalizar Inscrição' : 'Próximo')}
+                          </Button>
+                      </div>
+                  </div>
+              </div>
+          )}
+        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Termos e Condições" onContentScroll={handleTermsScroll}>
+          <TermsAndConditions />
+        </Modal>
+      </main>
+    </>
   );
 };
 
